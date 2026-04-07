@@ -1,1 +1,1 @@
-A monadic parser combinator that lets you parse everything under the sun.
+A monadic parser combinator library that lets you parse everything under the sun.
