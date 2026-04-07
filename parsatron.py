@@ -50,7 +50,7 @@ def alternate(*parsers):
             alt_thing, source, alt_i = p(string, i)
             if not isFail(alt_thing):
                 return alt_thing, source, alt_i
-            if best_i < i:
+            if best_i < alt_i:
                 best_fail, source, best_i = alt_thing, source, alt_i
         return best_fail, source, best_i
     return f
