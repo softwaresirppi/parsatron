@@ -5,6 +5,8 @@
 #  | |  | (_| | |  \__ \ (_| | |_| | | (_) | | | |
 #  |_|   \__,_|_|  |___/\__,_|\__|_|  \___/|_| |_|
 
+from functools import cache
+
 class Fail:
     def __init__(self, expected):
         self.expected = expected
@@ -15,70 +17,70 @@ def isFail(x):
     return isinstance(x, Fail)
 
 def succeed(x):
-    return lambda string: (x, string)
+    return lambda string, i: (x, string, i)
 
 def exactly(x):
-    def f(string):
-        if string[:len(x)] == x:
-            return x, string[len(x):]
+    def f(string, i=0):
+        if string[i:i+len(x)] == x:
+            return x, string, i + len(x)
         else:
-            return Fail(x), string
+            return Fail(x), string, i
     return f
 
 def charIf(predicate):
-    def f(string):
-        if string and predicate(string[0]):
-            return string[0], string[1:]
+    def f(string, i=0):
+        if 0 <= i < len(string) and predicate(string[i]):
+            return string[i], string, i + 1
         else:
-            return Fail("satisfied"), string
+            return Fail("satisfied"), string, i
     return f
 
 def bind(parser, continuation):
-    def f(string):
-        thing, rest = parser(string)
+    def f(string, i=0):
+        thing, source, i = parser(string, i)
         if isFail(thing):
-            return thing, rest
-        return continuation(thing)(rest)
+            return thing, source, i
+        return continuation(thing)(source, i)
     return f
 
 def alternate(*parsers):
-    def f(string):
-        best_fail, best_rest = Fail("deadend"), string
-        for p in parsers:
-            thing, rest = p(string)
-            if not isFail(thing):
-                return thing, rest
-            if len(rest) < len(best_rest):  # furthest failure = best error
-                best_fail, best_rest = thing, rest
-        return best_fail, best_rest
+    def f(string, i=0):
+        best_fail, source, best_i = Fail("no alternatives"), string, i
+        for p in parsers: 
+            alt_thing, source, alt_i = p(string, i)
+            if not isFail(alt_thing):
+                return alt_thing, source, alt_i
+            if best_i < i:
+                best_fail, source, best_i = alt_thing, source, alt_i
+        return best_fail, source, best_i
     return f
 
 def label(expected, parser):
-    def f(string):
-        thing, rest = parser(string)
+    def f(string, i=0):
+        thing, source, i = parser(string, i)
         if isFail(thing):
-            return Fail(expected), rest
-        return thing, rest
+            return Fail(expected), source, i
+        return thing, source, i
     return f
 
-# def alternate(*parsers):
-#     if not parsers:
-#         return lambda string: (Fail("deadend"), string)
-#     def f(string):
-#         results = [p(string) for p in parsers]
-#         for thing, rest in results:
-#             if not isFail(thing):
-#                 return thing, rest
-#         print(results)
-#         return min(results, key=lambda r: len(r[1]))
-#     return f
+def report(thing, string, i):
+    def truncate(text, n):
+        return text[:n] + '...' if n < len(text) else text
+    if isFail(thing):
+        return f"Unexpected {repr(truncate(string[i:], 32))}, expected {repr(thing.expected)}"
+    if i == len(string):
+        return thing
+    else:
+        return f"Unconsumed input: {repr(truncate(string[i:], 32))}"
 
+@cache
 def lazy(parser_f):
-    def f(string):
-        return parser_f()(string)
+    def f(string, i=0):
+        return parser_f()(string, i)
     return f
 
-# ABSTRACTION CURTAIN
+# ===== ABSTRACTION CURTAIN =====
+
 def charIn(chars):
     return charIf(lambda x: x in chars)
 
@@ -95,6 +97,9 @@ def ignoreRight(p1, p2):
     return bind(p1, lambda x:
            bind(p2, lambda _:
            succeed(x)))
+
+def wrapped(starting, ending, parser):
+    return ignoreLeft(starting, ignoreRight(parser, ending))
 
 def sequence(combiner, *parsers):
     if len(parsers) == 1:
@@ -126,6 +131,3 @@ def separatedSome(combiner, empty, sep, parser):
             many(combiner,
                 empty,
                 ignoreLeft(sep, parser)))
-
-def wrapped(starting, ending, parser):
-    return ignoreLeft(starting, ignoreRight(parser, ending))

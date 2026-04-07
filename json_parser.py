@@ -2,22 +2,11 @@ from parsatron import *
 from operator import add
 from sys import stdin
 
-escapeMap = {
-    '"': '"',
-    '\\': '\\',
-    '/': '/',
-    'b': '\b',
-    'f': '\f',
-    'n': '\n',
-    'r': '\r',
-    't': '\t'
-}
-
 # ===== WHITESPACE =====
 whitespace = many(add, '', charIn(" \n\r\t"))
 
 # ===== NUMBER =====
-sign = optional('', charIn('+-'))
+sign = optional('', exactly('-'))
 
 digit = charIn("0123456789")
 
@@ -48,6 +37,17 @@ jsonNumber = fmap(lambda x: float(x) if ('.' in x or 'e' in x or 'E' in x) else 
         exponent_part))
 
 # ===== STRING =====
+escapeMap = {
+    '"': '"',
+    '\\': '\\',
+    '/': '/',
+    'b': '\b',
+    'f': '\f',
+    'n': '\n',
+    'r': '\r',
+    't': '\t'
+}
+
 unicode = ignoreLeft(
             exactly('u'),
             fmap(lambda hex: chr(int(hex, 16)),
@@ -67,7 +67,7 @@ jsonString = wrapped(exactly('"'), exactly('"'),
 jsonArray = wrapped(exactly('['), exactly(']'), 
     alternate(
         separatedSome(lambda x, y: [x] + y, [], exactly(','), 
-            lazy(lambda: value)),
+            lazy(lambda: jsonValue)),
         fmap(lambda x: [], whitespace)))
 
 # ===== OBJECT =====
@@ -81,11 +81,11 @@ jsonObject = wrapped(exactly('{'), exactly('}'),
                     jsonString),
                 ignoreLeft(
                     exactly(':'),
-                    lazy(lambda: value)))),
+                    lazy(lambda: jsonValue)))),
         fmap(lambda x: {}, whitespace)))
 
 # ===== VALUE =====
-value = wrapped(whitespace, whitespace,
+jsonValue = wrapped(whitespace, whitespace,
     alternate(
         jsonString,
         jsonNumber,
@@ -95,15 +95,7 @@ value = wrapped(whitespace, whitespace,
         fmap(lambda x: False, exactly('false')),
         fmap(lambda x: None, exactly('null'))))
 
-
-def truncate(text, n):
-    if n < len(text):
-        return text[:n] + '...'
-    else:
-        return text
-
-thing, rest = value('\n'.join(stdin.readlines()))
-if isFail(thing):
-    print(f"Expected {repr(thing.expected)} but got {repr(truncate(rest, 32))}")
-else:
-    print(thing)
+print(
+    report(
+        *jsonValue(
+            ''.join(stdin.readlines()))))
