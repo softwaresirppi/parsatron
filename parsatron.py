@@ -15,10 +15,10 @@ def parsed(result): return result[1]
 def error(result): return result[2]
 def is_success(result): return parsed(result) is not FAIL
 
-def make_error(i, possibilities, stack=[]): return [i, possibilities, stack]
-def error_pos(error): return error[1]
-def error_possibilities(error): return error[2]
-def error_stack(error): return error[3]
+def make_error(i, possibilities, stack=()): return [i, possibilities, stack]
+def error_pos(error): return error[0]
+def error_possibilities(error): return error[1]
+def error_stack(error): return error[2]
 
 def merge_error(a, b):
     if error_pos(a) > error_pos(b): return a
@@ -67,7 +67,7 @@ def label(name, parser):
             make_error(
                 error_pos(error(result)), 
                 error_possibilities(error(result)), 
-                error_stack(error(result)) + [make_error(pos, {name})]))
+                error_stack(error(result)) + (make_error(pos, {name}),)))
     return f
 
 def bind(parser, continuation):
