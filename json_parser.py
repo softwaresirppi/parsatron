@@ -3,38 +3,44 @@ from operator import add
 from sys import stdin
 
 # ===== WHITESPACE =====
-whitespace = many(add, '', charIn(" \n\r\t"))
+whitespace = label("whitespaces",
+    many(add, '', charIn(" \n\r\t")))
 
 # ===== NUMBER =====
-sign = optional('', exactly('-'))
+sign = optional('', char('-'))
 
-digit = charIn("0123456789")
+digit = label("digit", charIn("0123456789"))
 
-digits = some(add, '', digit)
+digits = label("digits",
+    some(add, '', digit))
 
-wholePart = alternate(
-    exactly('0'),
-    sequence(add,
-        charIf(lambda x: x in "123456789"),
-        many(add, '', digit)))
+wholePart = label("integer",
+    alternate(
+        char('0'),
+        sequence(add,
+            charIf(lambda x: x in "123456789", "non-zero digit"),
+            many(add, '', digit))))
 
-fractionPart = optional('',
-    sequence(add, 
-        exactly('.'), 
-        digits))
+fractionPart = label("fractional",
+    optional('',
+        sequence(add, 
+            char('.'), 
+            digits)))
 
-exponent_part = optional('',
-    sequence(add,
-    charIn("eE"),
-    optional('', charIn("+-")),
-    digits))
+exponent_part = label("exponent",
+    optional('',
+        sequence(add,
+            charIn("eE"),
+            optional('', charIn("+-")),
+            digits)))
 
-jsonNumber = fmap(lambda x: float(x) if ('.' in x or 'e' in x or 'E' in x) else int(x), 
-    sequence(add,
-        sign,
-        wholePart,
-        fractionPart,
-        exponent_part))
+jsonNumber = label("JSON Number",
+    fmap(lambda x: float(x) if ('.' in x or 'e' in x or 'E' in x) else int(x), 
+        sequence(add,
+            sign,
+            wholePart,
+            fractionPart,
+            exponent_part)))
 
 # ===== STRING =====
 escapeMap = {
@@ -48,54 +54,65 @@ escapeMap = {
     't': '\t'
 }
 
-unicode = ignoreLeft(
-            exactly('u'),
-            fmap(lambda hex: chr(int(hex, 16)),
-                sequence(add, *(4 * [charIn("0123456789abcdefABCDEF")]))))
+unicode = label("unicode escape (\\uXXXX)",
+    ignoreLeft(
+        char('u'),
+        fmap(lambda hex: chr(int(hex, 16)),
+            sequence(add, *(4 * [charIn("0123456789abcdefABCDEF")])))))
 
-jsonString = wrapped(exactly('"'), exactly('"'), 
-    many(add, '',
-        alternate(
-            charIf(lambda x: not (x in "\"\\" or ord(x) < 32)),
-            ignoreLeft(
-                exactly('\\'),
-                alternate(
-                    fmap(escapeMap.__getitem__, charIn(escapeMap.keys())),
-                    unicode)))))
+jsonString = label("JSON String",
+    wrapped(char('"'), char('"'), 
+        many(add, '',
+            alternate(
+                charIf(lambda x: not (x in "\"\\" or ord(x) < 32), "string character"),
+                label("escape sequence", 
+                    ignoreLeft(
+                        char('\\'),
+                        alternate(
+                            fmap(escapeMap.__getitem__,
+                                 charIn(escapeMap.keys())),
+                            unicode)))))))
 
 # ===== ARRAY =====
-jsonArray = wrapped(exactly('['), exactly(']'), 
-    alternate(
-        separatedSome(lambda x, y: [x] + y, [], exactly(','), 
-            lazy(lambda: jsonValue)),
-        fmap(lambda x: [], whitespace)))
+jsonArray = label("JSON Array",
+    wrapped(char('['), char(']'),
+        alternate(
+            label("array elements",
+                separatedSome(lambda x, y: [x] + y, [],
+                    char(','), 
+                    lazy(lambda: jsonValue))),
+            label("empty array",
+                fmap(lambda x: [], whitespace)))))
 
 # ===== OBJECT =====
-jsonObject = wrapped(exactly('{'), exactly('}'),
-    alternate(
-        separatedSome(lambda x, y: x | y, {}, exactly(','),
-            sequence(lambda x, y: {x: y},
-                wrapped(
-                    whitespace,
-                    whitespace,
-                    jsonString),
-                ignoreLeft(
-                    exactly(':'),
-                    lazy(lambda: jsonValue)))),
-        fmap(lambda x: {}, whitespace)))
+jsonObject = label("JSON Object",
+    wrapped(char('{'), char('}'),
+        alternate(
+            label("object entries",
+                separatedSome(lambda x, y: x | y, {},
+                    char(','),
+                    sequence(lambda x, y: {x: y},
+                        wrapped(
+                            whitespace,
+                            whitespace,
+                            label("object key (string)", jsonString)),
+                        ignoreLeft(
+                            char(':'),
+                            lazy(lambda: jsonValue))))),
+            label("empty object",
+                fmap(lambda x: {}, whitespace)))))
 
 # ===== VALUE =====
-jsonValue = wrapped(whitespace, whitespace,
-    alternate(
-        jsonString,
-        jsonNumber,
-        jsonArray,
-        jsonObject,
-        fmap(lambda x: True, exactly('true')),
-        fmap(lambda x: False, exactly('false')),
-        fmap(lambda x: None, exactly('null'))))
+jsonValue = label("JSON Value", 
+    wrapped(whitespace, whitespace,
+        alternate(
+            jsonString,
+            jsonNumber,
+            jsonArray,
+            jsonObject,
+            fmap(lambda x: True, string('true')),
+            fmap(lambda x: False, string('false')),
+            fmap(lambda x: None, string('null')))))
 
-print(
-    report(
-        *jsonValue(
-            ''.join(stdin.readlines()))))
+if __name__ == "__main__":
+    report(jsonValue(''.join(stdin.readlines())))
