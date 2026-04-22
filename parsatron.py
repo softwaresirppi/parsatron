@@ -5,8 +5,9 @@
 #  | |  | (_| | |  \__ \ (_| | |_| | | (_) | | | |
 #  |_|   \__,_|_|  |___/\__,_|\__|_|  \___/|_| |_|
 
-from functools import cache
-
+from functools import cache, reduce
+from itertools import chain
+from operator import add
 # ===== Results & Errors =====
 FAIL = object()
 def make_result(i, parsed, error): return [i, parsed, error]
@@ -15,32 +16,25 @@ def parsed(result): return result[1]
 def error(result): return result[2]
 def is_success(result): return parsed(result) is not FAIL
 
-def make_error(i, possibilities, stack=()): return [i, possibilities, stack]
+def make_error(i, possibilities): return [i, possibilities]
 def error_pos(error): return error[0]
 def error_possibilities(error): return error[1]
-def error_stack(error): return error[2]
 
-def merge_error(a, b):
+def error_merge(a, b):
     if error_pos(a) > error_pos(b): return a
     elif error_pos(b) > error_pos(a): return b
     return make_error(error_pos(a), error_possibilities(a) | error_possibilities(b))
+
+def error_msg(error):
+    if not error_possibilities(error):
+        return ''
+    return f"@{error_pos(error)}: Expected {' OR '.join(error_possibilities(error))}"
 
 def succeed(thing, pos):
     return make_result(pos, thing, make_error(pos, set()))
     
 def fail(expected, pos):
     return make_result(pos, FAIL, make_error(pos, {expected}))
-
-def report(result):
-    def stacktrace(error):
-        if error_possibilities(error):
-            print(f"@{error_pos(error)}: Expected {' OR '.join(error_possibilities(error))}")
-        for s in error_stack(error):
-            stacktrace(s)
-    if is_success(result):
-        print(f"@{result_pos(result)}: {parsed(result)}")
-    else:
-        stacktrace(error(result))
 
 # ===== Parsing Primitives =====
 def success(x):
@@ -66,8 +60,7 @@ def label(name, parser):
             FAIL,
             make_error(
                 error_pos(error(result)), 
-                error_possibilities(error(result)), 
-                error_stack(error(result)) + (make_error(pos, {name}),)))
+                error_possibilities(error(result))))
     return f
 
 def bind(parser, continuation):
@@ -77,11 +70,11 @@ def bind(parser, continuation):
             return make_result(pos, FAIL, error(result))
         another_result = continuation(parsed(result))(source, result_pos(result))
         if not is_success(another_result):
-            return make_result(pos, FAIL, merge_error(error(result), error(another_result)))
+            return make_result(pos, FAIL, error_merge(error(result), error(another_result)))
         return make_result(
                 result_pos(another_result),
                 parsed(another_result),
-                merge_error(error(result), error(another_result)))
+                error_merge(error(result), error(another_result)))
     return f
 
 def recover(parser, handler):
@@ -89,13 +82,13 @@ def recover(parser, handler):
         result = parser(source, pos)
         if is_success(result):
             return result
-        another_result = handler(error(result))(source, result_pos(result))
+        another_result = handler(error_msg(error(result)))(source, result_pos(result))
         if is_success(another_result):
             return make_result(
                     result_pos(another_result),
                     parsed(another_result),
-                    merge_error(error(result), error(another_result)))
-        return make_result(pos, FAIL, merge_error(error(result), error(another_result)))
+                    error_merge(error(result), error(another_result)))
+        return make_result(pos, FAIL, error_merge(error(result), error(another_result)))
     return f
 
 @cache
@@ -172,3 +165,10 @@ def separatedSome(combiner, empty, sep, parser):
                 many(combiner, empty,
                     ignoreLeft(sep,
                         parser)))
+
+# ===== RUNNER =====
+def run(parser, source, on_error = (lambda x: x)):
+    result = parser(source)
+    if is_success(result):
+        return parsed(result)
+    return on_error(error_msg(error(result)))

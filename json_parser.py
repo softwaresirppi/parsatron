@@ -114,5 +114,5 @@ jsonValue = label("JSON Value",
             fmap(lambda x: False, string('false')),
             fmap(lambda x: None, string('null')))))
 
-if __name__ == "__main__":
-    report(jsonValue(''.join(stdin.readlines())))
+if __name__ == '__main__':
+    run(jsonValue(stdin.read()))
