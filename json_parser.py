@@ -115,4 +115,4 @@ jsonValue = label("JSON Value",
             fmap(lambda x: None, string('null')))))
 
 if __name__ == '__main__':
-    run(jsonValue(stdin.read()))
+    print(run(jsonValue, stdin.read()))
