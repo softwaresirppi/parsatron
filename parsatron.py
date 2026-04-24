@@ -5,9 +5,8 @@
 #  | |  | (_| | |  \__ \ (_| | |_| | | (_) | | | |
 #  |_|   \__,_|_|  |___/\__,_|\__|_|  \___/|_| |_|
 
-from functools import cache, reduce
-from itertools import chain
-from operator import add
+from functools import cache
+
 # ===== Results & Errors =====
 FAIL = object()
 def make_result(i, parsed, error): return [i, parsed, error]
@@ -51,18 +50,6 @@ def consume(name, predicate, n):
     return parser
 
 # ===== Primitive Parsing Combinators =====
-def label(name, parser):
-    def f(source, pos=0):
-        result = parser(source, pos)
-        if is_success(result):
-            return result
-        return make_result(pos,
-            FAIL,
-            make_error(
-                error_pos(error(result)), 
-                error_possibilities(error(result))))
-    return f
-
 def bind(parser, continuation):
     def f(source, pos=0):
         result = parser(source, pos)
