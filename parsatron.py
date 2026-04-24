@@ -24,16 +24,10 @@ def error_merge(a, b):
     elif error_pos(b) > error_pos(a): return b
     return make_error(error_pos(a), error_possibilities(a) | error_possibilities(b))
 
-def result_merge(a, b):
-    return make_result(
-                result_pos(a),
-                parsed(a),
-                error_merge(error(a), error(b)))
-
-def error_msg(result):
-    if not error_possibilities(error(result)):
+def error_msg(error):
+    if not error_possibilities(error):
         return ''
-    return f"@{error_pos(error(result))}: Expected {' OR '.join(error_possibilities(error(result)))}"
+    return f"@{error_pos(error)}: Expected {' OR '.join(error_possibilities(error))}"
 
 def succeed(thing, pos):
     return make_result(pos, thing, make_error(pos, set()))
@@ -60,30 +54,28 @@ def bind(parser, continuation):
     def f(source, pos=0):
         result = parser(source, pos)
         if not is_success(result):
-            return result
+            return make_result(pos, FAIL, error(result))
         another_result = continuation(parsed(result))(source, result_pos(result))
         if not is_success(another_result):
-            return another_result
-        return result_merge(another_result, result)
-    return f
-
-def attempt(parser):
-    def f(source, pos=0):
-        result = parser(source, pos)
-        if is_success(result):
-            return result
-        return make_result(pos, FAIL, error(result))
+            return make_result(pos, FAIL, error_merge(error(result), error(another_result)))
+        return make_result(
+                result_pos(another_result),
+                parsed(another_result),
+                error_merge(error(result), error(another_result)))
     return f
 
 def recover(parser, handler):
     def f(source, pos=0):
-        result = attempt(parser)(source, pos)
+        result = parser(source, pos)
         if is_success(result):
             return result
-        another_result = handler(error_msg(result))(source, pos)
+        another_result = handler(error_msg(error(result)))(source, result_pos(result))
         if is_success(another_result):
-            return result_merge(another_result, result)
-        return another_result
+            return make_result(
+                    result_pos(another_result),
+                    parsed(another_result),
+                    error_merge(error(result), error(another_result)))
+        return make_result(pos, FAIL, error_merge(error(result), error(another_result)))
     return f
 
 @cache
@@ -166,4 +158,4 @@ def run(parser, source, on_error = (lambda x: x)):
     result = parser(source)
     if is_success(result):
         return parsed(result)
-    return on_error(error_msg(result))
+    return on_error(error_msg(error(result)))
